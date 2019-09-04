@@ -2167,6 +2167,12 @@ changelist."
   '("...")
   (p4-call-command cmd args :mode 'p4-status-list-mode))
 
+(defp4cmd p4-stream (&rest args)
+  "stream"
+  "Create or edit a stream specification."
+  (interactive (p4-read-args* "p4 stream: " "" 'stream))
+  (p4-form-command "stream" args :move-to "\\(Description\\|Paths\\):\n\t"))
+
 (defun p4-empty-diff-buffer ()
   "If there exist any files opened for edit with an empty diff,
 return a buffer listing those files. Otherwise, return NIL."
@@ -2913,6 +2919,7 @@ and update the cache accordingly."
 (defvar p4-label-history nil "P4 label history.")
 (defvar p4-pending-history nil "P4 pending change history.")
 (defvar p4-shelved-history nil "P4 shelved change history.")
+(defvar p4-stream-history nil "P4 stream history.")
 (defvar p4-user-history nil "P4 user history.")
 
 (defvar p4-all-completions
@@ -2951,6 +2958,10 @@ and update the cache accordingly."
    (cons 'shelved  (p4-make-completion
                     :fetch-completions-fn 'p4-fetch-shelved-completions
                     :history 'p4-shelved-history))
+   (cons 'stream  (p4-make-completion
+                    :query-cmd "streams"
+                    :regexp "^Stream \\([^ \n]*\\) "
+                    :history 'p4-stream-history))
    (cons 'user     (p4-make-completion
                     :query-cmd "users" :query-prefix ""
                     :regexp "^\\([^ \n]+\\)"
