@@ -509,18 +509,18 @@ commit command.")
 (defmacro p4-with-temp-buffer (args &rest body)
   "Run p4 ARGS in a temporary buffer, place point at the start of
 the output, and evaluate BODY if the command completed successfully."
+  (declare (indent 1) (debug t))
   `(let ((dir (or p4-default-directory default-directory)))
      (with-temp-buffer
        (cd dir)
        (when (zerop (p4-run ,args)) ,@body))))
-
-(put 'p4-with-temp-buffer 'lisp-indent-function 1)
 
 (defmacro p4-with-set-output (&rest body)
   "Run p4 set in a temporary buffer, place point at the start of
 the output, and evaluate BODY if the command completed successfully."
   ;; Can't use `p4-with-temp-buffer' for this, because that would lead
   ;; to infinite recursion via `p4-coding-system'.
+  (declare (indent 0) (debug t))
   `(let ((dir (or p4-default-directory default-directory)))
      (with-temp-buffer
        (cd dir)
@@ -528,17 +528,14 @@ the output, and evaluate BODY if the command completed successfully."
                       (p4-call-process nil t nil "set")))
          ,@body))))
 
-(put 'p4-with-set-output 'lisp-indent-function 0)
-
 (defmacro p4-with-coding-system (&rest body)
   "Evaluate BODY with coding-system-for-read and -write set to
 the result of `p4-coding-system'."
+  (declare (indent 0))
   `(let* ((coding (p4-coding-system))
           (coding-system-for-read coding)
           (coding-system-for-write coding))
      ,@body))
-
-(put 'p4-with-coding-system 'lisp-indent-function 0)
 
 
 ;;; Environment:
@@ -682,7 +679,7 @@ exact match."
                                          "^\\(//[^#\n]+#[1-9][0-9]*\\) - " 1)
              collect (list f nil 0 0 0 now now now 0 "-r--r--r--" nil 0 0))))
 
-(defun p4-directory-files-and-attributes (dir &optional full match nosort id-format)
+(defun p4-directory-files-and-attributes (dir &optional full match nosort &rest ignored)
   (let* ((from (length dir))
          (files (cl-loop for f in (append (p4-dirs-and-attributes dir)
                                           (p4-files-and-attributes dir))
@@ -699,7 +696,7 @@ exact match."
 (defun p4-file-directory-p (filename)
   (p4-with-temp-buffer (list "-s" "dirs" filename) (looking-at "info:")))
 
-(defun p4-file-name-sans-versions (filename &optional keep-backup-version)
+(defun p4-file-name-sans-versions (filename &optional ignored)
   (string-match "\\(.*?\\)\\(?:#[1-9][0-9]*\\|@[^#@ \t\n]+\\)?$" filename)
   (match-string 1 filename))
 
@@ -710,7 +707,7 @@ exact match."
                               (nth 8 f) (format-time-string "%b %e %Y" (nth 6 f))
                               (nth 0 f)))))
 
-(defun p4-insert-file-contents (filename &optional visit beg end replace)
+(defun p4-insert-file-contents (filename &optional visit &rest ignored)
   (unless (zerop (p4-run (list "print" "-q" filename)))
     (signal 'file-error (buffer-substring (point-min) (point-max))))
   (when visit
@@ -721,7 +718,7 @@ exact match."
   (setq buffer-read-only t))
 
 (defun p4-file-name-handler (operation &rest args)
-  (case operation
+  (cl-case operation
     ((expand-file-name file-truename substitute-in-file-name)
      (car args))
     (directory-files (apply 'p4-directory-files args))
@@ -1148,7 +1145,7 @@ and arguments taken from the local variable `p4-process-args'."
         (p4-set-process-coding-system process)
         (message "Running p4 %s..." (p4-join-list p4-process-args))))))
 
-(defun p4-revert-buffer (&optional ignore-auto noconfirm)
+(defun p4-revert-buffer (&rest ignored)
   (p4-process-restart))
 
 (defun p4-process-buffer-name (args)
@@ -1350,7 +1347,7 @@ number is not known or not applicable."
     (with-current-buffer buffer
       (setq p4-vc-status status
             p4-vc-revision revision)
-      (let ((new-mode (case status
+      (let ((new-mode (cl-case status
                         (sync (format " P4:%d" revision))
                         (depot (format " P4:%s" status))
                         ((add branch edit integrate) (format " P4:%s" status))
@@ -1375,7 +1372,9 @@ number is not known or not applicable."
         (kill-buffer (current-buffer))
         (p4-maybe-start-update-statuses)))))
 
-(defun p4-update-status-sentinel-1 (process message)
+(defun p4-update-status-sentinel-1 (process &optional ignored)
+  ;; n.b. `message' is declared as `ignored' as hint to lexical optimizer
+  ;;
   ;; Don't check (string= message "finished\n"): "p4 opened" exits
   ;; with status 1 if asked to determine the status of a file outside
   ;; the workspace root, but we still want to process the output in
@@ -1504,7 +1503,7 @@ off-line, toggle the status check on/off when opening files."
 (defun p4-toggle-read-only ()
   "Toggle between `p4-edit' and `p4-revert'."
   (interactive)
-  (case p4-vc-status
+  (cl-case p4-vc-status
     (edit (p4-revert))
     (sync (p4-edit))))
 
@@ -1584,7 +1583,7 @@ changelevel."
 
 (eval-when (eval load)
   ;; When interpreting, don't run "p4 help cmd" (takes too long).
-  (defun p4-help-text (cmd text) text))
+  (defun p4-help-text (ignored text) text))
 
 (defmacro defp4cmd (name arglist help-cmd help-text &rest body)
   "Define a function, running p4 help HELP-CMD at compile time to
@@ -2701,7 +2700,7 @@ only be used when p4 annotate is unavailable."
                   (incf current-repeats)
                 (setq current-repeats 0))
               (let ((rev (cdr (assoc change file-change-alist))))
-                (case current-repeats
+                (cl-case current-repeats
                   (0 (insert (p4-file-revision-annotate-links rev)))
                   (1 (insert (p4-file-revision-annotate-desc rev)))
                   (t (insert (format "%33s: " "")))))
@@ -3725,7 +3724,7 @@ This is the value of `next-error-function' in P4 Grep buffers."
 
 ;;; Hooks:
 
-(add-hook 'find-file-hooks 'p4-update-status)
+(add-hook 'find-file-hook 'p4-update-status)
 
 ;(add-to-list 'file-name-handler-alist '("\\`//\\(?:[^/#@ \t\n]+/\\)+[^/#@ \t\n]*\\(?:#[1-9][0-9]*\\|@[^/#@ \n\t]+\\)?$" . p4-file-name-handler))
 
