@@ -683,9 +683,9 @@ exact match."
   (let* ((from (length dir))
          (files (cl-loop for f in (append (p4-dirs-and-attributes dir)
                                           (p4-files-and-attributes dir))
-                         unless (and match (not (string-match match (first f))))
+                         unless (and match (not (string-match match (cl-first f))))
                          collect (if full f
-                                   (cons (substring (first f) from) (cdr f))))))
+                                   (cons (substring (cl-first f) from) (cdr f))))))
     (if nosort files
       (sort files 'file-attributes-lessp))))
 
@@ -760,15 +760,15 @@ exact match."
                               (seconds-to-time p4-cleanup-time))))
     (setf p4-filespec-buffer-cache
           (cl-loop for c in p4-filespec-buffer-cache
-                   when (and (time-less-p stale (second c))
-                             (buffer-live-p (third c)))
+                   when (and (time-less-p stale (cl-second c))
+                             (buffer-live-p (cl-third c)))
                    collect c))))
 
 (defun p4-visit-filespec (filespec)
   "Visit FILESPEC in some buffer and return the buffer."
   (p4-purge-filespec-buffer-cache)
   (let ((cached (assoc filespec p4-filespec-buffer-cache)))
-    (if cached (third cached)
+    (if cached (cl-third cached)
       (let ((args (list "print" filespec)))
         (set-buffer (p4-make-output-buffer (p4-process-buffer-name args)))
         (if (zerop (p4-run args))
@@ -1152,7 +1152,7 @@ and arguments taken from the local variable `p4-process-args'."
   "Return a suitable buffer name for the p4 ARGS command."
   (format "*P4 %s*" (p4-join-list args)))
 
-(defun* p4-call-command (cmd &optional args &key mode callback after-show
+(cl-defun p4-call-command (cmd &optional args &key mode callback after-show
                              (auto-login t) synchronous pop-up-output)
   "Start a Perforce command.
 First (required) argument CMD is the p4 command to run.
@@ -1219,7 +1219,7 @@ NIL if the form has no value for that key."
   (when regexp (re-search-forward regexp nil t))
   (message "C-c C-c to finish editing and exit buffer."))
 
-(defun* p4-form-command (cmd &optional args &key move-to commit-cmd
+(cl-defun p4-form-command (cmd &optional args &key move-to commit-cmd
                              success-callback
                              (failure-callback
                               'p4-form-commit-failure-callback-default)
@@ -1318,8 +1318,8 @@ for those settings."
       (setq pending (list set (seconds-to-time 0) nil))
       (push pending p4-update-status-pending-alist))
     (when force
-      (setf (second pending) (seconds-to-time 0)))
-    (pushnew buffer (third pending))))
+      (setf (cl-second pending) (seconds-to-time 0)))
+    (cl-pushnew buffer (cl-third pending))))
 
 (defun p4-update-status-pending-sort ()
   "Tidy up `p4-update-status-pending-alist': discard buffers that
@@ -1328,14 +1328,14 @@ pending; and sort pending updates into order by time of last
 update (oldest first)."
   (setq p4-update-status-pending-alist
         (sort (cl-loop for pending in p4-update-status-pending-alist
-                       do (setf (third pending)
-                                (cl-loop for b in (third pending)
+                       do (setf (cl-third pending)
+                                (cl-loop for b in (cl-third pending)
                                          if (and (buffer-live-p b)
                                                  (buffer-file-name b))
                                          collect b))
-                       if (third pending)
+                       if (cl-third pending)
                        collect pending)
-              (lambda (a b) (time-less-p (second a) (second b))))))
+              (lambda (a b) (time-less-p (cl-second a) (cl-second b))))))
 
 (defun p4-update-mode (buffer status revision)
   "Turn p4-mode on or off in BUFFER according to Perforce status.
@@ -1397,8 +1397,8 @@ number is not known or not applicable."
                    (push b have-buffers))
                   (t (setq processed nil)))
             (when processed
-              (setf (third p4-process-pending)
-                    (remove b (third p4-process-pending)))))
+              (setf (cl-third p4-process-pending)
+                    (remove b (cl-third p4-process-pending)))))
           (forward-line 1))
         (erase-buffer)
         (if (and p4-executable have-buffers)
@@ -1426,30 +1426,33 @@ an update is running already."
   (when (and p4-executable
              p4-update-status-pending-alist
              (not (get-buffer-process p4-update-status-process-buffer)))
-    (let* ((pending (first p4-update-status-pending-alist))
-           (last-updated (second pending))
+    (let* ((pending (cl-first p4-update-status-pending-alist))
+           (last-updated (cl-second pending))
            (timeout (time-add last-updated
                               (seconds-to-time p4-update-status-timeout)))
-           (buffers (third pending))
+           (buffers (cl-third pending))
            (now (current-time)))
       (when (and buffers (time-less-p timeout now))
-        (setf (second pending) now)
+        (setf (cl-second pending) now)
         (with-current-buffer
             (get-buffer-create p4-update-status-process-buffer)
-          (setq default-directory
-                (with-current-buffer (car buffers)
-                  (or p4-default-directory default-directory)))
-          (let ((process (p4-start-process "P4" (current-buffer)
-                                           "-s" "-x" "-" "opened")))
-            (set-process-query-on-exit-flag process nil)
-            (set-process-sentinel process 'p4-update-status-sentinel-1)
-            (p4-set-process-coding-system process)
-            (setq p4-process-buffers (copy-sequence buffers))
-            (setq p4-process-pending pending)
-            (cl-loop for b in buffers
-                     do (process-send-string process (p4-buffer-file-name b))
-                     do (process-send-string process "\n"))
-            (process-send-eof process)))))))
+          (condition-case nil
+              (progn
+                (setq default-directory
+                    (with-current-buffer (car buffers)
+                      (or p4-default-directory default-directory)))
+                (let ((process (p4-start-process "P4" (current-buffer)
+                                                 "-s" "-x" "-" "opened")))
+                  (set-process-query-on-exit-flag process nil)
+                  (set-process-sentinel process 'p4-update-status-sentinel-1)
+                  (p4-set-process-coding-system process)
+                  (setq p4-process-buffers (copy-sequence buffers))
+                  (setq p4-process-pending pending)
+                  (cl-loop for b in buffers
+                           do (process-send-string process (p4-buffer-file-name b))
+                           do (process-send-string process "\n"))
+                  (process-send-eof process)))
+            (file-missing nil)))))))
 
 (defun p4-update-status (&optional force)
   "Start an asynchronous update of the Perforce status of the
@@ -1525,7 +1528,7 @@ following, in order, until one succeeds:
         ((get-char-property (point) 'block-client-name))
         ((get-char-property (point) 'block-depot-name))
         ((let ((f (p4-dired-get-marked-files)))
-           (and f (p4-follow-link-name (first f)))))
+           (and f (p4-follow-link-name (cl-first f)))))
         ((p4-basic-list-get-filename))))
 
 (defun p4-context-filenames-list ()
@@ -1571,7 +1574,7 @@ changelevel."
 
 ;;; Defining Perforce command interfaces:
 
-(eval-when (compile)
+(cl-eval-when (compile)
   ;; When byte-compiling, get help text by running "p4 help cmd".
   (defun p4-help-text (cmd text)
     (with-temp-buffer
@@ -1581,7 +1584,7 @@ changelevel."
           (concat text "\n" (buffer-substring (point-min) (point-max)))
         text))))
 
-(eval-when (eval load)
+(cl-eval-when (eval load)
   ;; When interpreting, don't run "p4 help cmd" (takes too long).
   (defun p4-help-text (ignored text) text))
 
@@ -2850,7 +2853,7 @@ hash table."
                               (seconds-to-time p4-cleanup-time))))
     (setf (p4-completion-cache completion)
           (cl-loop for c in (p4-completion-cache completion)
-                   when (time-less-p stale (second c))
+                   when (time-less-p stale (cl-second c))
                    collect c))))
 
 (defun p4-complete (completion string)
@@ -2864,8 +2867,8 @@ and update the cache accordingly."
     ;; Exact cache hit?
     (if cached
         (progn
-          (setq p4-completion-annotations (fourth cached))
-          (third cached))
+          (setq p4-completion-annotations (cl-fourth cached))
+          (cl-third cached))
       ;; Any hit on a prefix (unless :cache-exact)
       (or (and (not (p4-completion-cache-exact completion))
                (cl-loop for (query timestamp results annotations) in cache
